@@ -1,0 +1,224 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Barbie's Jeep Adventure</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background-color: #f0f0f0;
+      font-family: Arial, sans-serif;
+    }
+    canvas {
+      border: 2px solid #333;
+    }
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: #FF69B4;
+      font-size: 16px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div id="ui">Score: 0</div>
+  <script>
+    let jeep = {};
+    let barbie = {};
+    let terrainImg;
+    let stars = [];
+    let trees = [];
+    let score = 0;
+
+    function preload() {
+      try {
+        // Initialize Jeep and Barbie
+        jeep = { w: 60, h: 40, color: '#FFFFFF' }; // White Jeep
+        barbie = { w: 20, h: 20, color: '#FF69B4' }; // Pink Barbie
+        // Create terrain
+        terrainImg = createGraphics(1000, 800);
+        terrainImg.background(34, 139, 34); // Green grass
+        terrainImg.fill(128, 128, 128);
+        // Draw roads (GTA-style map)
+        terrainImg.rect(100, 0, 100, 800); // Vertical road
+        terrainImg.rect(0, 300, 1000, 100); // Horizontal road
+        // Add borders
+        terrainImg.fill(139, 69, 19);
+        terrainImg.rect(0, 0, 1000, 20);
+        terrainImg.rect(0, 780, 1000, 20);
+        terrainImg.rect(0, 0, 20, 800);
+        terrainImg.rect(980, 0, 20, 800);
+      } catch (e) {
+        console.error('Preload error:', e);
+      }
+    }
+
+    function setup() {
+      try {
+        createCanvas(1000, 800);
+        jeep.x = width / 2;
+        jeep.y = height / 2;
+        jeep.angle = 0;
+        jeep.speed = 0;
+        jeep.maxSpeed = 6;
+        jeep.acceleration = 0.15;
+        jeep.rotationSpeed = 0.06;
+
+        // Spawn collectible stars
+        for (let i = 0; i < 10; i++) {
+          stars.push({
+            x: random(50, width - 50),
+            y: random(50, height - 50),
+            r: 10,
+            collected: false
+          });
+        }
+
+        // Spawn trees (obstacles)
+        for (let i = 0; i < 15; i++) {
+          trees.push({
+            x: random(50, width - 50),
+            y: random(50, height - 50),
+            r: 20
+          });
+        }
+      } catch (e) {
+        console.error('Setup error:', e);
+      }
+    }
+
+    function draw() {
+      try {
+        background(terrainImg);
+
+        // Update Jeep
+        if (keyIsDown(UP_ARROW)) {
+          jeep.speed = min(jeep.speed + jeep.acceleration, jeep.maxSpeed);
+        } else if (keyIsDown(DOWN_ARROW)) {
+          jeep.speed = max(jeep.speed - jeep.acceleration, -jeep.maxSpeed / 2);
+        } else {
+          jeep.speed *= 0.95;
+        }
+
+        if (keyIsDown(LEFT_ARROW)) {
+          jeep.angle -= jeep.rotationSpeed;
+        }
+        if (keyIsDown(RIGHT_ARROW)) {
+          jeep.angle += jeep.rotationSpeed;
+        }
+
+        // Move Jeep
+        let nextX = jeep.x + cos(jeep.angle) * jeep.speed;
+        let nextY = jeep.y + sin(jeep.angle) * jeep.speed;
+
+        // Check collision with trees
+        let canMove = true;
+        for (let tree of trees) {
+          let d = dist(nextX, nextY, tree.x, tree.y);
+          if (d < (jeep.w / 2 + tree.r)) {
+            canMove = false;
+            break;
+          }
+        }
+
+        if (canMove) {
+          jeep.x = nextX;
+          jeep.y = nextY;
+        }
+
+        // Keep Jeep within bounds
+        jeep.x = constrain(jeep.x, 20, width - 20);
+        jeep.y = constrain(jeep.y, 20, height - 20);
+
+        // Check for star collection
+        for (let star of stars) {
+          if (!star.collected && dist(jeep.x, jeep.y, star.x, star.y) < (jeep.w / 2 + star.r)) {
+            star.collected = true;
+            score += 10;
+            document.getElementById('ui').innerText = `Score: ${score}`;
+          }
+        }
+
+        // Draw trees
+        fill(0, 100, 0);
+        for (let tree of trees) {
+          ellipse(tree.x, tree.y, tree.r * 2);
+        }
+
+        // Draw stars
+        fill(255, 192, 203);
+        for (let star of stars) {
+          if (!star.collected) {
+            ellipse(star.x, star.y, star.r * 2);
+          }
+        }
+
+        // Draw Jeep
+        push();
+        translate(jeep.x, jeep.y);
+        rotate(jeep.angle);
+        fill(jeep.color);
+        rect(-jeep.w / 2, -jeep.h / 2, jeep.w, jeep.h);
+        // Draw Barbie
+        fill(barbie.color);
+        rect(-jeep.w / 4, -jeep.h / 4, barbie.w, barbie.h);
+        pop();
+
+        // Draw UI
+        fill(0);
+        textSize(16);
+        textAlign(LEFT);
+        text("Use arrow keys to drive Barbie's Jeep. Collect pink stars!", 10, 30);
+      } catch (e) {
+        console.error('Draw error:', e);
+      }
+    }
+  </script>
+</body>
+</html>
